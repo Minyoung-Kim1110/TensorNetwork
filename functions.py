@@ -2,7 +2,7 @@ import numpy as np
 import numpy.linalg as lin 
 from typing import List, Tuple
 
-MATLAB_style=True
+MATLAB_style=False 
 order_type = 'F' if MATLAB_style else 'C'
 
 def get_MPS_QR(tensor:np.array)->List[np.array]:
@@ -80,6 +80,184 @@ def MPS_to_tensor(MPS:List[np.array]):
     
     return A.squeeze()
 
+def get_identity(ket: np.array, 
+                idx_ket: int,
+                operator=None, # np.array 
+                idx_operator=None, 
+                permute=None # tuple 
+                ):
+    """TODO
+    """
+    dim_ket = ket.shape[idx_ket] # 0 : left leg, 1: right leg, 2: bottom leg
+    if operator is None and idx_operator is None: 
+        identity = np.eye(dim_ket)
+        
+    else: 
+        dim_operator = operator.shape[idx_operator]
+        identity = np.eye(dim_ket * dim_operator)
+        identity = identity.reshape(dim_ket, dim_operator, dim_ket*dim_operator)
+        identity = np.transpose(identity, (0, 2, 1))
+        
+    if permute == None: 
+        return identity
+    else: 
+        if len(permute)==len(identity.shape):
+            return np.transpose(identity, permute)
+        elif len(permute)==len(identity.shape)+1:
+            if len(identity.shape)==2:
+                return np.transpose(identity[:, :, None], permute)
+            elif len(identity.shape)==3:
+                return np.transpose(identity[:, :,:,  None], permute)
+        else: 
+            raise ValueError("permute idx is longer than identity tensor")
+        
+    
+def updateLeft(Cleft, B, X, A):
+    ''' B' : Hermitian conjugate of B (complex conjugate and permute left, right legs) 
+            Hence, the left leg (0) of B' = right leg (1) of B  
+    * When Cleft is rank-2 and X is rank-2:
+                    0         1
+            /--------->- A ->--            /---->-- 1
+            |            | 2               |
+          1 ^            ^                 |
+            |            | 1               |      
+        Cleft            X         =>    Cleft 
+            |            | 0               |
+          0 ^            ^                 |
+            |            | 2               |
+            \---------<- B'-<--            \----<-- 0
+                    1        0
+        * When Cleft is rank-3 and X is rank-2:
+                      0     1
+            /--------->- A ->--            /---->-- 1
+            |            | 2               |
+          1 ^            ^                 |
+            |    3       | 1               |      
+        Cleft---       X         =>    Cleft ---- 2
+            |            | 0               |
+          0 ^            ^                 |
+            |            | 2               |
+            \---------<- B'-<--            \----<-- 0
+                    1       0
+        * When Cleft is rank-2 and X is rank-3:
+                      0      1
+            /--------->- A ->--            /---->-- 1
+            |            | 2               |
+          1 ^            ^                 |
+            |          1 |   2             |      
+          Cleft          X ----    =>    Cleft ---- 2
+            |          0 |                 |
+          0 ^            ^                 |
+            |            | 2               |
+            \---------<- B'-<--            \----<-- 0
+                      1     0
+        * When both Cleft and X are rank-3:
+                      0     1
+            /--------->- A ->--            /---->-- 1
+            |            | 2               |
+          1 ^            ^                 |
+            |   2     2  | 1               |      
+        Cleft--------- X         =>    Cleft
+            |            | 0               |
+          0 ^            ^                 |
+            |            | 2               |
+            \---------<- B'-<--            \----<-- 0
+                     1     0
+        * When Cleft is rank-3 and X is rank-4:
+                      0     1
+            /--------->- A ->--            /---->-- 1
+            |            | 2               |
+          1 ^            ^                 |
+            |   2    2   | 1               |      
+          Cleft--------- X ---- 2   =>   Cleft ---- 2
+            |            | 0               |
+          0 ^            ^                 |
+            |            | 2               |
+            \---------<- B'-<--            \----<-- 0
+                      1     0
+
+    '''    
+    
+    B = np.conj(B)
+    if Cleft is None and X is None: 
+        Cleft = contract(B, A, [0, 2], [0,2] )
+    elif Cleft is not None and X is None: 
+        rankC = len(Cleft.shape)
+        #contract up_Cleft, left_A
+        if rankC <2: 
+            Cleft = Cleft.reshape((1,1))
+        T = contract(Cleft, A, [1], [0]) # bottom_C, (right_C), right_A, bottom_A
+        # contract bottom_C, left_B' 
+        # contract up_B', bottom_A
+        Cleft = contract(B, T, [0,2], [0,rankC]) # if rankC=2: no right_C, contract with bottom A 
+                                                # if rankC=3: contract with bottom_A 
+                                                # right_B, (right_C), right_A
+        if rankC == 3: 
+            Cleft=np.transpose(Cleft, (0, 2, 1))
+    elif Cleft is None and X is not None: 
+        rankX = len(X.shape)
+        
+        if rankX == 4: 
+            raise ValueError('Dimension of X has error')
+        T = contract(X, A, [1], [2]) # bottom_X, (right_X), left_A, right_A
+        Cleft = contract(B, T, [0, rankX-1], [2, 0]) #left_A, left_B' 
+                                        # bottom_X - up_B' 
+                                            # right_B, (right_X,) right_A 
+        if rankX==3:
+            Cleft = np.transpose(Cleft, (0, 2, 1))                                  
+            
+    else: 
+        rankC = len(Cleft.shape)
+        rankX = len(X.shape)
+        
+        # contract bottom_A, up_X
+        T = contract(X, A, [1], [2]) # bottom_X, (leftX, right_X), left_A, right_A
+        
+        if (rankC, rankX)==(2, 2):
+            #contract up_Cleft, left_A
+            T = contract(Cleft, T, [1],[1] ) # bottom_C, bottom_X, right_A
+            Cleft = contract(B, T, [0, 2], [0, 1]) #left_B'-bottom_C 
+                                            # up_B' - bottom_X 
+                                            # right_B', right_A  
+    
+        elif (rankC, rankX)==(2, 3):
+            #contract up_Cleft, left_A
+            T = contract(Cleft, T, [1],[2] ) # bottom_C, bottom_X, right_X, right_A
+            Cleft = contract(B, T, [0, 2], [0, 1]) #left_B'-bottom_C 
+                                            # up_B' - bottom_X 
+                                            # right_B', right_X, right_A  
+            Cleft = np.transpose(Cleft, (0, 2, 1))
+        
+        elif (rankC, rankX)==(3, 2):
+            #contract up_Cleft, left_A
+            T = contract(Cleft, T, [1],[1] ) # bottom_C, right_C, bottom_X,  right_A
+            Cleft = contract(B, T, [0, 2], [0, 2]) #left_B'-bottom_C 
+                                            # up_B' - bottom_X 
+                                            # right_B',right_C, right_A  
+            Cleft = np.transpose(Cleft, (0, 2, 1))
+            
+        elif (rankC, rankX)==(3, 3):
+            #contract up_Cleft, left_A
+            # right_C, left_X                                 
+            T = contract(Cleft, T, [1, 2],[2, 1] ) # bottom_C, bottom_X,  right_A
+            # contract 
+            #left_B'-bottom_C 
+            # up_B' - bottom_X 
+            Cleft = contract(B, T, [0, 2], [0, 1]) # right_B',right_A  
+        elif (rankC, rankX)==(3, 4):
+              
+            #contract up_Cleft, left_A
+            # right_C, left_X                                 
+            T = contract(Cleft, T, [1, 2],[3, 1] ) # bottom_C, bottom_X,right_X, right_A
+            # contract 
+            #left_B'-bottom_C 
+            # up_B' - bottom_X 
+            Cleft = contract(B, T, [0, 2], [0, 1]) # right_B',right_X, right_A  
+            Cleft = np.transpose(Cleft, (0, 2, 1))    
+    
+    return Cleft 
+    
+    
 def entropy(s: np.array)->float: 
     """from singular values, compute entropy 
 
