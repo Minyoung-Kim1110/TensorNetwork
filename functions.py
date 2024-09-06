@@ -2,7 +2,7 @@ import numpy as np
 import numpy.linalg as lin 
 from typing import List, Tuple
 
-MATLAB_style=False 
+MATLAB_style=False
 order_type = 'F' if MATLAB_style else 'C'
 
 def get_MPS_QR(tensor:np.array)->List[np.array]:
@@ -75,7 +75,7 @@ def MPS_to_tensor(MPS:List[np.array]):
     """
     A = MPS[0]
     for i in range(1, len(MPS)):
-        rank = len(A.shape)
+        # rank = len(A.shape)
         A = contract(A, np.transpose(MPS[i], (0, 2, 1)), [len(A.shape)-1], [0])
     
     return A.squeeze()
@@ -95,7 +95,7 @@ def get_identity(ket: np.array,
     else: 
         dim_operator = operator.shape[idx_operator]
         identity = np.eye(dim_ket * dim_operator)
-        identity = identity.reshape(dim_ket, dim_operator, dim_ket*dim_operator)
+        identity = identity.reshape(dim_ket, dim_operator, dim_ket*dim_operator, order=order_type)
         identity = np.transpose(identity, (0, 2, 1))
         
     if permute == None: 
@@ -181,11 +181,10 @@ def updateLeft(Cleft, B, X, A):
     B = np.conj(B)
     if Cleft is None and X is None: 
         Cleft = contract(B, A, [0, 2], [0,2] )
+        
     elif Cleft is not None and X is None: 
         rankC = len(Cleft.shape)
         #contract up_Cleft, left_A
-        if rankC <2: 
-            Cleft = Cleft.reshape((1,1))
         T = contract(Cleft, A, [1], [0]) # bottom_C, (right_C), right_A, bottom_A
         # contract bottom_C, left_B' 
         # contract up_B', bottom_A
@@ -196,14 +195,21 @@ def updateLeft(Cleft, B, X, A):
             Cleft=np.transpose(Cleft, (0, 2, 1))
     elif Cleft is None and X is not None: 
         rankX = len(X.shape)
-        
         if rankX == 4: 
             raise ValueError('Dimension of X has error')
-        T = contract(X, A, [1], [2]) # bottom_X, (right_X), left_A, right_A
-        Cleft = contract(B, T, [0, rankX-1], [2, 0]) #left_A, left_B' 
-                                        # bottom_X - up_B' 
-                                            # right_B, (right_X,) right_A 
-        if rankX==3:
+        if rankX == 2: 
+            
+            T = contract(X, A, [1], [2]) # bottom_X,  left_A, right_A
+            # contract leftA, left_B 
+            # contract bottom_X, up_B 
+            Cleft = contract(B, T, [0, 2], [1, 0])    # right_B, right_A 
+            
+        if rankX==3:    
+            T = contract(X, A, [1], [2]) # bottom_X, right_X, left_A, right_A
+            #left_A, left_B' 
+            # bottom_X - up_B' 
+                                            
+            Cleft = contract(B, T, [0, 2], [2, 0]) # right_B, right_X, right_A 
             Cleft = np.transpose(Cleft, (0, 2, 1))                                  
             
     else: 
