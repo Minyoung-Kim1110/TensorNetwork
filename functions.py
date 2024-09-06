@@ -84,9 +84,20 @@ def get_identity(ket: np.array,
                 idx_ket: int,
                 operator=None, # np.array 
                 idx_operator=None, 
-                permute=None # tuple 
                 ):
-    """TODO
+    """Get the identity operator that connects the ket and the operator. 
+    
+    Args:
+        ket (np.array): a ket with three legs 
+        idx_ket (int) : indicate which leg to connect 
+                        0 : left leg, 1: right leg, 2:bottom leg 
+        operator (np.array): a operator 
+        idx_operator (int) : indicate which leg to connect 
+                        order : bottom - up - left - right 
+    Returns:
+        identity (np.array): an identity operator
+
+    Written by M.Kim (Sep.06 2024)
     """
     dim_ket = ket.shape[idx_ket] # 0 : left leg, 1: right leg, 2: bottom leg
     if operator is None and idx_operator is None: 
@@ -98,7 +109,7 @@ def get_identity(ket: np.array,
         identity = identity.reshape(dim_ket, dim_operator, dim_ket*dim_operator, order=order_type)
         identity = np.transpose(identity, (0, 2, 1))
         
-    if permute == None: 
+    '''if permute == None: 
         return identity
     else: 
         if len(permute)==len(identity.shape):
@@ -109,10 +120,24 @@ def get_identity(ket: np.array,
             elif len(identity.shape)==3:
                 return np.transpose(identity[:, :,:,  None], permute)
         else: 
-            raise ValueError("permute idx is longer than identity tensor")
+            raise ValueError("permute idx is longer than identity tensor")'''
         
     
 def updateLeft(Cleft, B, X, A):
+    """Update Cleft with ket A, bra B, with operator X 
+    Detailed concatenation is described below. 
+    Args:
+        Cleft (np.array): the left tensor
+        B (np.array): a ket to be producted as a bra 
+        X (np.array) : an operator 
+        A (np.array) : a ket 
+        
+    Returns:
+        Cleft (np.array): updated Cleft with A, B, X 
+
+    Written by M.Kim (Sep.06 2024)
+    """
+    
     ''' B' : Hermitian conjugate of B (complex conjugate and permute left, right legs) 
             Hence, the left leg (0) of B' = right leg (1) of B  
     * When Cleft is rank-2 and X is rank-2:
@@ -175,7 +200,7 @@ def updateLeft(Cleft, B, X, A):
             |            | 2               |
             \---------<- B'-<--            \----<-- 0
                       1     0
-
+    Retreived from ssLee's TensorNetwork2022 
     '''    
     
     B = np.conj(B)
