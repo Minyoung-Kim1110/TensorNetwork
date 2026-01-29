@@ -479,7 +479,6 @@ def check_equality_tensor(A: np.array, B : np.array, tol = 10 ** ( -15) ):
     Returns:
         (Boolean): Whether two tensors are equal or not 
 
-    Written by M.Kim (Sep.10 2022)
     """
     if A.shape != B.shape:
         return False 
@@ -489,6 +488,124 @@ def check_equality_tensor(A: np.array, B : np.array, tol = 10 ** ( -15) ):
         return True 
 
 
+   
+    # Placeholder for utility functions that exist in the original MATLAB environment
+def disptime(message: str):
+    """Simple print utility for time-stamped messages."""
+    print(f"[{np.datetime_as_string(np.datetime64('now'), unit='s')}] {message}")
+
+def tic2():
+    """Start timer."""
+    return np.datetime64('now')
+
+def toc2(tobj: np.datetime64, options: str = ''):
+    """End timer and print duration."""
+    duration = np.datetime64('now') - tobj
+    print(f"Execution time: {duration}")
+
+def chkmem():
+    pass
+
+def get_local_space(op_type: str, s = None) :
+    """
+    Generates local operators as tensors based on the specified space.
+
+    Args:
+        op_type (str): Type of space: 'Spin', 'Fermion', or 'FermionS'.
+        s (float, optional): Spin value for 'Spin' case (e.g., 0.5, 1, 1.5).
+
+    Returns:
+        List[np.ndarray]: List of generated local operators (S, I, F, Z, etc.).
+    """
+    
+    # --- Input Parsing and Validation ---
+    
+    # Check if op_type is valid
+    valid_types = {'Spin', 'Fermion', 'FermionS'}
+    if op_type not in valid_types:
+        raise ValueError(f"ERR: Input #1 should be one of {valid_types}.")
+
+    is_fermion = op_type in {'Fermion', 'FermionS'}
+    is_spin_op = op_type in {'Spin', 'FermionS'}
+    
+    # Default Identity matrix size
+    if op_type == 'Spin':
+        if s is None:
+            raise ValueError("ERR: For 'Spin', input 's' is required.")
+        # Check if s is positive (half-)integer
+        s_rounded = np.round(2 * s) / 2.0
+        if np.abs(2 * s - 2 * s_rounded) > np.finfo(float).eps * 10 or s <= 0:
+            raise ValueError("ERR: Input 's' for 'Spin' should be positive (half-)integer.")
+        s = s_rounded
+        I = np.eye(int(2 * s + 1))
+    elif op_type == 'Fermion':
+        I = np.eye(2)
+    elif op_type == 'FermionS':
+        I = np.eye(4)
+    
+    # --- Operator Generation ---
+    
+    S = np.array([])
+    F = np.array([])
+    Z = np.array([])
+    
+    if is_fermion:
+        if op_type == 'FermionS': # spinful fermion
+            # Basis: |vac>, c'_up|vac>, c'_down|vac>, c'_down c'_up|vac> (0, 1, 2, 3)
+            F = np.zeros((4, 4, 2), dtype=np.complex128)
+            
+            # F(:,:,0) [index 0]: spin-up annihilation f_up
+            F[0, 1, 0] = 1.0 
+            F[2, 3, 0] = -1.0 # -1 sign due to anticommutation f_up c'_down |up down> = -c'_down f_up |up down>
+            
+            # F(:,:,1) [index 1]: spin-down annihilation f_down
+            F[0, 2, 1] = 1.0
+            F[1, 3, 1] = 1.0 # f_down c'_up |up down> = c'_up f_down |up down>
+            
+            # Z: Jordan-Wigner string operator (-1)^(N_up + N_down)
+            Z = np.diag([1.0, -1.0, -1.0, 1.0])
+            
+            # S: Spin operators (S+/sqrt(2), Sz, S-/sqrt(2))
+            S = np.zeros((4, 4, 3), dtype=np.complex128)
+            
+            # Correct Spin Operators for the two-orbital (4-site) space:
+            # S+ = f_up^\dagger f_down + f_down^\dagger f_up
+            
+            S[1, 2, 0] = 1.0 / np.sqrt(2.0)
+            S[:, :, 2] = S[:, :, 0].conj().T
+            S[1, 1, 1] = +0.5
+            S[2, 2, 1] = -0.5
+            
+        else: # spinless fermion
+            # Basis: |vac>, |occ> (0, 1)
+            F = np.zeros((2, 2, 1), dtype=np.float64)
+            F[0, 1, 0] = 1.0 # Annihilation f
+            Z = np.diag([1.0, -1.0])
+            
+    elif op_type == 'Spin': # pure spin (no fermion operators)
+        # Basis: +s, +s-1, ..., -s
+        
+        # Sp: Spin raising S+
+        m_values = np.arange(s - 1, -s - 1, -1) # s-1, s-2, ..., -s
+        Sp_diag = np.sqrt((s - m_values) * (s + m_values + 1))
+        Sp = np.diag(Sp_diag, k=1)
+        
+        # Sz: Spin-z S_z
+        Sz = np.diag(np.arange(s, -s - 1, -1))
+        
+        # S: cat(3, Sp/sqrt(2), Sz, Sp'/sqrt(2))
+        S_plus_scaled = Sp / np.sqrt(2.0)
+        S_minus_scaled = Sp.T / np.sqrt(2.0) # Sp' in MATLAB is transpose (conjugate not needed for real matrix)
+        
+        S = np.stack([S_plus_scaled, Sz, S_minus_scaled], axis=2)
+        
+    # --- Assign Output ---
+    if op_type == 'FermionS':
+        return [F, Z, S, I]
+    elif op_type == 'Fermion':
+        return [F, Z, I]
+    elif op_type == 'Spin':
+        return [S, I]
 
 if __name__ == '__main__':
     dim = [2,3,2,3,4]
@@ -519,3 +636,4 @@ if __name__ == '__main__':
     else: 
         print(f'integrity of to MPS using SVD Failed!')
     
+ 
