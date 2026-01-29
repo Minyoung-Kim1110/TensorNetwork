@@ -1,7 +1,7 @@
 # TensorNetwork
 
 Tensor-network code for **quantum computing simulation** and **condensed-matter calculations**.  
-This repository is centered around a small Python `src/` codebase plus a set of Jupyter notebooks (e.g. Heisenberg triangle, non-interacting tight-binding chain, SIAM/NRG exercises). [src/]
+This repository is centered around a small Python `src/` codebase plus a set of Jupyter notebooks (e.g. Heisenberg triangle, non-interacting tight-binding chain, SIAM/NRG exercises). 
 
 ---
 
